@@ -529,6 +529,23 @@ class test_crontab_remaining_estimate:
 
         assert next == datetime(2023, 1, 29, 0, 0, tzinfo=tz)
 
+    def test_hourly_crontab_during_fallback_dst_transition(self):
+        # #10107: Hourly crontab should run at second 1 AM during fall-back
+        # (same local hour occurs twice); without fix is_due is False.
+        tzname = "US/Pacific"
+        self.app.timezone = tzname
+        tz = ZoneInfo(tzname)
+        # Hourly at minute 0
+        schedule = self.crontab(minute='0', hour='*')
+        # Fall-back Nov 1, 2026: 8:00 UTC = 1:00 AM PDT, 9:00 UTC = 1:00 AM PST
+        last_run_at = datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 11, 1, 9, 0, tzinfo=timezone.utc)
+        schedule.nowfun = lambda: now
+        result = schedule.is_due(last_run_at)
+        assert result.is_due is True, (
+            "Hourly crontab should be due at second 1 AM after fall-back"
+        )
+
 
 class test_crontab_is_due:
 

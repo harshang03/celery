@@ -636,6 +636,22 @@ class crontab(BaseSchedule):
         """
         # pylint: disable=redefined-outer-name
         # caching global ffwd
+        # During fall-back DST transition the same local hour occurs twice;
+        # adjust last_run_at so hourly crontabs don't skip the second occurrence
+        # (fixes #10107).
+        last_run_at = self.maybe_make_aware(last_run_at)
+        utc_now = self.now()
+        local_now = self.to_local(utc_now)
+        local_hour_ago = self.to_local(utc_now - timedelta(hours=1))
+        offset_now = local_now.utcoffset()
+        offset_hour_ago = local_hour_ago.utcoffset()
+        if offset_now is not None and offset_hour_ago is not None:
+            time_fell_back = (
+                (offset_now - offset_hour_ago).total_seconds() == -3600.0
+            )
+            cron_is_hourly = getattr(self, '_orig_hour', None) == '*'
+            if time_fell_back and cron_is_hourly and utc_now > last_run_at:
+                last_run_at = last_run_at - timedelta(hours=1)
         return remaining(*self.remaining_delta(last_run_at, ffwd=ffwd))
 
     def is_due(self, last_run_at: datetime) -> tuple[bool, datetime]:
